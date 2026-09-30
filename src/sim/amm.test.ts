@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { markedTvl, product, quoteCurve, quoteSwap, yesPrice } from "./amm"
+import { markedTvl, poolActions, product, quoteCurve, quoteSwap, yesPrice } from "./amm"
 import type { Pool } from "./types"
 
 function invariant(pool: Pool, seed: Pool): void {
@@ -21,6 +21,16 @@ describe("amm", () => {
     expect(quote!.price).toBeCloseTo(100 / quote!.shares, 8)
     expect(quote!.spotAfter).toBeGreaterThan(0.5)
     invariant(quote!.pool, seed)
+  })
+
+  it("lists a YES buy as a flashloan that is repaid, without a fee action", () => {
+    const steps = poolActions("YES", "buy", 10, 5.0352, 0.0252)
+    expect(steps).toEqual([
+      "Flash borrow $10.00",
+      "Create 10 complete sets",
+      "Swap 10 NO for $4.99",
+      "Repay $10.00 flashloan",
+    ])
   })
 
   it("buys YES by minting a complete set and selling NO", () => {

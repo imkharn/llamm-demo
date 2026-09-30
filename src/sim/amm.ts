@@ -50,25 +50,28 @@ export function quoteSwap(pool: Pool, side: Side, asset: Asset, amount: number):
   return { ...quote, usdc: net, price: net / quote.shares, fee }
 }
 
-/** Wallet actions for one pool fill. Buys mint a complete set, then sell the other outcome. */
+/**
+ * Wallet actions for one pool fill.
+ * A buy borrows the collateral to mint a complete set, sells the other outcome, and repays the loan.
+ * The swap fee stays out of this list; it is already shown on the summary.
+ */
 export function poolActions(asset: Asset, side: Side, shares: number, usdc: number, fee: number): string[] {
   const other = asset === "YES" ? "NO" : "YES"
   if (side === "buy") {
     const net = usdc - fee
-    const steps = [
+    const borrowed = formatUsdc(shares)
+    return [
+      `Flash borrow ${borrowed}`,
       `Create ${formatShares(shares)} complete sets`,
       `Swap ${formatShares(shares)} ${other} for ${formatUsdc(shares - net)}`,
+      `Repay ${borrowed} flashloan`,
     ]
-    if (fee > 1e-8) steps.push(`Swap fee ${formatUsdc(fee)}`)
-    return steps
   }
   const gross = usdc + fee
-  const steps = [
+  return [
     `Swap ${formatShares(shares - gross)} ${asset} for ${formatShares(gross)} ${other}`,
     `Redeem ${formatShares(gross)} complete sets`,
   ]
-  if (fee > 1e-8) steps.push(`Swap fee ${formatUsdc(fee)}`)
-  return steps
 }
 
 function buy(pool: Pool, asset: Asset, usdc: number): Quote | null {
