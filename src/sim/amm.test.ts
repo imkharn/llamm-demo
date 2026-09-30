@@ -27,8 +27,8 @@ describe("amm", () => {
     const steps = poolActions("YES", "buy", 10, 5.0352, 0.0252)
     expect(steps).toEqual([
       "Flash borrow $10.00",
-      "Create 10 complete sets",
-      "Swap 10 NO for $4.99",
+      "Create 10 complete sets (YES + NO)",
+      "Sell 10 NO for $4.99",
       "Repay $10.00 flashloan",
     ])
   })

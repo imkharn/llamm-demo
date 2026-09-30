@@ -62,8 +62,8 @@ export function poolActions(asset: Asset, side: Side, shares: number, usdc: numb
     const borrowed = formatUsdc(shares)
     return [
       `Flash borrow ${borrowed}`,
-      `Create ${formatShares(shares)} complete sets`,
-      `Swap ${formatShares(shares)} ${other} for ${formatUsdc(shares - net)}`,
+      `Create ${formatShares(shares)} complete sets (YES + NO)`,
+      `Sell ${formatShares(shares)} ${other} for ${formatUsdc(shares - net)}`,
       `Repay ${borrowed} flashloan`,
     ]
   }
