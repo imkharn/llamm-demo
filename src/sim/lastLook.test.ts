@@ -239,17 +239,21 @@ describe("last look", () => {
     expect(pending.shares).toBeCloseTo(shares, 4)
   })
 
-  it("keeps one live order when a swap takes a last look and the pool", () => {
+  it("keeps the replacement and the pool buy as separate orders", () => {
     const first = swapYes()
     if (!first.ok) throw new Error(first.error)
     const second = applySwap(first.state, { user: "trader2", side: "buy", asset: "YES", amount: 400 })
     if (!second.ok) throw new Error(second.error)
     const live = second.state.fills.filter((fill) => fill.owner === "trader2" && fill.status === "pending")
-    expect(live).toHaveLength(1)
+    expect(live).toHaveLength(2)
     const replaced = second.state.fills.find((fill) => fill.owner === "trader1" && fill.status === "replaced")!
     const head = liveHead(replaced, second.state.fills)
-    expect(head.id).toBe(live[0].id)
     expect(head.status).toBe("pending")
+    expect(head.replacesId).toBe(replaced.id)
+    expect(head.shares).toBeCloseTo(replaced.shares, 6)
+    const pool = live.find((fill) => fill.id !== head.id)!
+    expect(pool.replacesId).toBeUndefined()
+    expect(pool.shares).toBeGreaterThan(0)
   })
 
   it("reconstructs the new order and pool revenue when an older replacement did not store them", () => {

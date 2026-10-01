@@ -233,12 +233,9 @@ function simulateSwap(state: MarketState, input: SwapInput): { ok: true } & Simu
 
   if (legs.length === 0) return { ok: false, error: "The pool cannot fill this amount." }
 
-  const combined = coalesceCreated(working, created)
-  working = combined.state
-
   let improve: ImprovePreview | null = null
   if (input.improvePrice != null) {
-    const raised = raiseFills(working, input.user, combined.ids, input.improvePrice)
+    const raised = raiseFills(working, input.user, created, input.improvePrice)
     if (!raised.ok) return raised
     working = raised.state
     improve = raised.improve
@@ -335,38 +332,6 @@ export function swapActions(preview: SwapPreview): string[] {
   }
   flushLook()
   return steps
-}
-
-/** One swap is one escrow position, even when the route used several slices. */
-function coalesceCreated(state: MarketState, ids: string[]): { state: MarketState; ids: string[] } {
-  const pending = ids
-    .map((id) => state.fills.find((fill) => fill.id === id && fill.status === "pending"))
-    .filter((fill): fill is Fill => Boolean(fill))
-  if (pending.length <= 1) return { state, ids: pending.map((fill) => fill.id) }
-  const shares = pending.reduce((sum, fill) => sum + fill.shares, 0)
-  const notional = pending.reduce((sum, fill) => sum + fill.price * fill.shares, 0)
-  const fee = pending.reduce((sum, fill) => sum + (fill.feeUsdc ?? 0), 0)
-  const primary = pending[0]
-  const drop = new Set(pending.slice(1).map((fill) => fill.id))
-  const merged: Fill = {
-    ...primary,
-    shares,
-    price: shares > 0 ? notional / shares : primary.price,
-    feeUsdc: fee > 0 ? fee : undefined,
-  }
-  return {
-    ids: [primary.id],
-    state: {
-      ...state,
-      fills: state.fills
-        .filter((fill) => !drop.has(fill.id))
-        .map((fill) => {
-          if (fill.id === primary.id) return merged
-          if (fill.successorId && drop.has(fill.successorId)) return { ...fill, successorId: primary.id }
-          return fill
-        }),
-    },
-  }
 }
 
 /** Price the new trader locked, and pool rebate revenue before and after that bid. */
