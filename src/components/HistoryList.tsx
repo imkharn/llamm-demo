@@ -142,7 +142,7 @@ function Replacement({ replaced, showFee = false }: { replaced: Fill; showFee?: 
         {showFee && replaced.feeUsdc != null && replaced.feeUsdc > 0 && (
           <Row label="Swap fee on the original fill" value={formatUsdc(replaced.feeUsdc)} />
         )}
-        <Row label="Pool kept" value={rebate} />
+        {replaced.rebateUsdc != null && <Row label="Pool kept" value={rebate} />}
         {replaced.priceBefore != null && replaced.priceAfter != null && (
           <Row
             label="YES price"
