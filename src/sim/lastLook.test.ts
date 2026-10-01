@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { yesPrice } from "./amm"
-import { WINDOW_MS, applyOutbid, applySwap, describeSwap, finalizeDue, initialState, quoteInput } from "./lastLook"
+import { WINDOW_MS, applyOutbid, applySwap, describeSwap, finalizeDue, initialState, liveHead, quoteInput, swapActions } from "./lastLook"
 import type { Fill, MarketState } from "./types"
 
 function swapYes(amount = 100) {
@@ -237,6 +237,54 @@ describe("last look", () => {
     const pending = second.state.fills.find((item) => item.owner === "trader2" && item.status === "pending")!
     expect(pending.price).toBeCloseTo(target, 6)
     expect(pending.shares).toBeCloseTo(shares, 4)
+  })
+
+  it("keeps one live order when a swap takes a last look and the pool", () => {
+    const first = swapYes()
+    if (!first.ok) throw new Error(first.error)
+    const second = applySwap(first.state, { user: "trader2", side: "buy", asset: "YES", amount: 400 })
+    if (!second.ok) throw new Error(second.error)
+    const live = second.state.fills.filter((fill) => fill.owner === "trader2" && fill.status === "pending")
+    expect(live).toHaveLength(1)
+    const replaced = second.state.fills.find((fill) => fill.owner === "trader1" && fill.status === "replaced")!
+    const head = liveHead(replaced, second.state.fills)
+    expect(head.id).toBe(live[0].id)
+    expect(head.status).toBe("pending")
+  })
+
+  it("summarizes every last look in a swap as one step", () => {
+    const start = initialState()
+    const fills: Fill[] = [
+      {
+        id: "a",
+        owner: "trader1",
+        side: "buy",
+        asset: "YES",
+        shares: 19.802,
+        price: 0.4,
+        deadline: WINDOW_MS,
+        createdAt: 0,
+        status: "pending",
+      },
+      {
+        id: "b",
+        owner: "trader1",
+        side: "buy",
+        asset: "YES",
+        shares: 19.6097,
+        price: 0.41,
+        deadline: WINDOW_MS,
+        createdAt: 1,
+        status: "pending",
+      },
+    ]
+    const described = describeSwap(
+      { ...start, fills, nextId: 3 },
+      { user: "trader2", side: "buy", asset: "YES", amount: 500 },
+    )
+    if (!described.ok) throw new Error(described.error)
+    const matches = swapActions(described.preview).filter((step) => step.startsWith("Match"))
+    expect(matches).toEqual(["Match 39.4117 YES from a last look"])
   })
 
   it("solves the USDC input for a chosen number of shares", () => {

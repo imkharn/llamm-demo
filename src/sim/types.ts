@@ -47,6 +47,11 @@ export interface Fill {
   /** YES price before and after the rebate on this replacement. */
   priceBefore?: number
   priceAfter?: number
+  /** Price the new trader locked for this slice. */
+  nextPrice?: number
+  /** Cumulative last-look revenue of the pool before and after this bid. */
+  revenueBefore?: number
+  revenueAfter?: number
   /** Fill created by the bid that replaced this one. */
   successorId?: string
   /** Fill this one superseded. */

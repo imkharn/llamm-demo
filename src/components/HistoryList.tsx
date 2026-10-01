@@ -1,15 +1,15 @@
 import { useState } from "react"
 import { formatCents, formatCountdown, formatShares, formatUsdc, sideLabel, userLabel } from "../sim/format"
+import { liveHead } from "../sim/lastLook"
 import { useStore } from "../sim/store"
-import type { Fill } from "../sim/types"
+import type { Fill, UserId } from "../sim/types"
 
 export function HistoryList() {
   const { state } = useStore()
   const [openId, setOpenId] = useState<string | null>(null)
-  const mine = state.fills
-    .filter((fill) => fill.owner === state.activeUser)
-    .slice()
-    .sort((a, b) => statusRank(a.status) - statusRank(b.status) || b.createdAt - a.createdAt)
+  const mine = visibleFills(state.fills, state.activeUser).sort(
+    (a, b) => statusRank(a.status) - statusRank(b.status) || b.createdAt - a.createdAt,
+  )
 
   if (mine.length === 0) {
     return (
@@ -26,11 +26,21 @@ export function HistoryList() {
       {paused && <p className="hint">The market clock is paused, so these countdowns are holding.</p>}
       {mine.map((fill) => {
         const open = openId === fill.id
+        const event = accountingEvent(fill, state.fills)
         return (
           <article key={fill.id} className={open ? "trade open" : "trade"}>
-            <button type="button" className="trade-hit" onClick={() => setOpenId(open ? null : fill.id)}>
+            <button
+              type="button"
+              className={event ? "trade-hit" : "trade-hit static"}
+              onClick={() => {
+                if (!event) return
+                setOpenId(open ? null : fill.id)
+              }}
+            >
               <div className="trade-top">
-                <strong>{sideLabel(fill)}</strong>
+                <strong>
+                  {fill.owner === state.activeUser ? sideLabel(fill) : `${userLabel(fill.owner)} · ${sideLabel(fill)}`}
+                </strong>
                 <span className={`badge badge-${fill.status}`}>{statusLabel(fill.status)}</span>
               </div>
               <p>
@@ -40,9 +50,9 @@ export function HistoryList() {
               {fill.status === "pending" && (
                 <p className="countdown">Finalizes in {formatCountdown(fill.deadline - state.marketTime)}</p>
               )}
-              <p className="muted">{open ? "Hide accounting" : "View accounting"}</p>
+              {event && <p className="muted">{open ? "Hide accounting" : "View accounting"}</p>}
             </button>
-            {open && <Ledger fill={fill} />}
+            {open && event && <Ledger event={event} />}
           </article>
         )
       })}
@@ -50,127 +60,51 @@ export function HistoryList() {
   )
 }
 
-function Ledger({ fill }: { fill: Fill }) {
-  const { state } = useStore()
-  const opened = fill.replacesId ? state.fills.find((item) => item.id === fill.replacesId) : undefined
-  const closed = fill.successorId ? fill : undefined
+function visibleFills(fills: Fill[], user: UserId): Fill[] {
+  const heads = new Map<string, Fill>()
+  for (const fill of fills) {
+    if (fill.owner !== user && fill.replacedBy !== user) continue
+    const head = liveHead(fill, fills)
+    heads.set(head.id, head)
+  }
+  return [...heads.values()]
+}
 
+function accountingEvent(fill: Fill, fills: Fill[]): Fill | undefined {
+  if (!fill.replacesId) return undefined
+  return fills.find((item) => item.id === fill.replacesId)
+}
+
+function Ledger({ event }: { event: Fill }) {
+  const nextPrice = event.nextPrice
+  const profit = event.profitUsdc ?? 0
+  const notional = event.price * event.shares
   return (
     <div className="ledger">
-      {opened ? <Replacement replaced={opened} showFee /> : <Opening fill={fill} />}
-      {closed && (
-        <>
-          <h3>How this fill ended</h3>
-          <Replacement replaced={closed} />
-        </>
-      )}
-      {!closed && <Holding fill={fill} />}
+      <dl>
+        <Row label="New Trader" value={event.replacedBy ? userLabel(event.replacedBy) : "—"} />
+        <Row label="Displaced Trader" value={userLabel(event.owner)} />
+        <Row label="Original Order" value={orderText(event, event.price)} />
+        {nextPrice != null && <Row label="New Order" value={orderText(event, nextPrice)} />}
+        {event.revenueBefore != null && event.revenueAfter != null && (
+          <Row label="AMM revenue" value={`${formatUsdc(event.revenueBefore)} → ${formatUsdc(event.revenueAfter)}`} />
+        )}
+        <Row label="Profit paid to displaced trader" value={`${formatUsdc(profit)}${roiText(profit, notional)}`} />
+      </dl>
     </div>
   )
 }
 
-function Opening({ fill }: { fill: Fill }) {
-  const cost = fill.price * fill.shares
-  return (
-    <section>
-      <h3>Opened on the pool</h3>
-      <dl>
-        <Row label="Trader" value={userLabel(fill.owner)} />
-        <Row
-          label={fill.side === "buy" ? "Paid" : "Sold"}
-          value={fill.side === "buy" ? formatUsdc(cost) : `${formatShares(fill.shares)} ${fill.asset}`}
-        />
-        {fill.feeUsdc != null && fill.feeUsdc > 0 && <Row label="Swap fee kept by the pool" value={formatUsdc(fill.feeUsdc)} />}
-      </dl>
-    </section>
-  )
+function orderText(fill: Fill, price: number): string {
+  const verb = fill.side === "buy" ? "Buy" : "Sell"
+  return `${verb} ${formatShares(fill.shares)} ${fill.asset} for ${formatUsdc(price * fill.shares)}`
 }
 
-function Holding({ fill }: { fill: Fill }) {
-  const { state } = useStore()
-  if (fill.status === "pending") {
-    return (
-      <p className="muted">
-        Still in escrow. Finalizes in {formatCountdown(fill.deadline - state.marketTime)}, then{" "}
-        {fill.side === "buy"
-          ? `${formatShares(fill.shares)} ${fill.asset} is paid out.`
-          : `${formatUsdc(fill.price * fill.shares)} is paid out.`}
-      </p>
-    )
-  }
-  if (fill.status === "finalized") {
-    return (
-      <p className="muted">
-        Finalized.{" "}
-        {fill.side === "buy"
-          ? `Received ${formatShares(fill.shares)} ${fill.asset}.`
-          : `Received ${formatUsdc(fill.price * fill.shares)}.`}
-      </p>
-    )
-  }
-  return null
-}
-
-function Replacement({ replaced, showFee = false }: { replaced: Fill; showFee?: boolean }) {
-  const { state } = useStore()
-  const successor = replaced.successorId
-    ? state.fills.find((item) => item.id === replaced.successorId)
-    : undefined
-  const same = replaced.replacedBy === replaced.owner
-  const shares = `${formatShares(replaced.shares)} ${replaced.asset}`
-  const profit = formatUsdc(replaced.profitUsdc ?? 0)
-  const rebate = formatUsdc(replaced.rebateUsdc ?? 0)
-
-  return (
-    <section>
-      <h3>{same ? "Raised this fill" : "Superseding bid"}</h3>
-      <dl>
-        <Row label="Displaced trader" value={userLabel(replaced.owner)} />
-        <Row label="Gave up" value={shares} />
-        {replaced.side === "sell" && (
-          <Row label="Tokens returned" value={`${formatShares(replaced.returnedShares ?? 0)} ${replaced.asset}`} />
-        )}
-        {replaced.side === "buy" && !same && (
-          <Row label="Cash returned" value={formatUsdc(replaced.payoutUsdc ?? 0)} />
-        )}
-        <Row label={same ? "Share of the gap, not charged" : "Share of the gap"} value={profit} />
-        <Row label="New trader" value={replaced.replacedBy ? userLabel(replaced.replacedBy) : "—"} />
-        <Row label="New trader paid" value={newTraderPaid(replaced, successor, same)} />
-        {successor && (
-          <Row label="New fill" value={`${shares} at ${formatCents(successor.price)}, ${successorStatus(successor, state.marketTime)}`} />
-        )}
-        {showFee && replaced.feeUsdc != null && replaced.feeUsdc > 0 && (
-          <Row label="Swap fee on the original fill" value={formatUsdc(replaced.feeUsdc)} />
-        )}
-        {replaced.rebateUsdc != null && <Row label="Pool kept" value={rebate} />}
-        {replaced.priceBefore != null && replaced.priceAfter != null && (
-          <Row
-            label="YES price"
-            value={`${formatCents(replaced.priceBefore)} → ${formatCents(replaced.priceAfter)}`}
-          />
-        )}
-      </dl>
-    </section>
-  )
-}
-
-function newTraderPaid(replaced: Fill, successor: Fill | undefined, same: boolean): string {
-  if (!successor) return "—"
-  if (replaced.side === "sell") {
-    return same ? `${formatUsdc(replaced.profitUsdc ?? 0)} credited now` : `${formatShares(successor.shares)} ${successor.asset}`
-  }
-  if (same) return formatUsdc(replaced.rebateUsdc ?? 0)
-  return formatUsdc(successor.price * successor.shares)
-}
-
-function successorStatus(fill: Fill, marketTime: number): string {
-  if (fill.status === "pending") return `still in escrow (${formatCountdown(fill.deadline - marketTime)} left)`
-  if (fill.status === "finalized") {
-    return fill.side === "buy"
-      ? `finalized, received ${formatShares(fill.shares)} ${fill.asset}`
-      : `finalized, received ${formatUsdc(fill.price * fill.shares)}`
-  }
-  return "later replaced"
+function roiText(profit: number, notional: number): string {
+  if (!(notional > 0)) return ""
+  const pct = Math.round((profit / notional) * 10000) / 100
+  const text = Number.isInteger(pct) ? String(pct) : String(pct)
+  return ` (${text}% ROI)`
 }
 
 function Row({ label, value }: { label: string; value: string }) {

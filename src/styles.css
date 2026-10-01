@@ -586,6 +586,8 @@ main {
   cursor: pointer;
 }
 
+.trade-hit.static { cursor: default; }
+
 .trade p { margin: 6px 0 0; }
 
 .ledger {
@@ -660,11 +662,12 @@ main {
   border-radius: 16px;
   box-shadow: 0 16px 50px rgba(40, 20, 50, 0.2);
   z-index: 40;
-  overflow: hidden;
+  overflow: visible;
   animation: pop 160ms ease-out;
 }
 
-.wallet-stripe { height: 4px; background: #fc72ff; }
+.wallet-stripe { height: 4px; background: #fc72ff; border-radius: 16px 16px 0 0; }
+.qmark .splash { z-index: 80; }
 .wallet.user-trader2 .wallet-stripe { background: #4c82fb; }
 .wallet.user-lp .wallet-stripe { background: #1fa971; }
 

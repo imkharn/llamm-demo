@@ -200,9 +200,12 @@ function simulateSwap(state: MarketState, input: SwapInput): { ok: true } & Simu
 
   if (legs.length === 0) return { ok: false, error: "The pool cannot fill this amount." }
 
+  const combined = coalesceCreated(working, created)
+  working = combined.state
+
   let improve: ImprovePreview | null = null
   if (input.improvePrice != null) {
-    const raised = raiseFills(working, input.user, created, input.improvePrice)
+    const raised = raiseFills(working, input.user, combined.ids, input.improvePrice)
     if (!raised.ok) return raised
     working = raised.state
     improve = raised.improve
@@ -283,14 +286,67 @@ export function quoteInput(
 
 export function swapActions(preview: SwapPreview): string[] {
   const steps: string[] = []
+  let lookShares = 0
+  const flushLook = () => {
+    if (lookShares <= 0) return
+    steps.push(`Match ${formatShares(lookShares)} ${preview.asset} from a last look`)
+    lookShares = 0
+  }
   for (const leg of preview.legs) {
     if (leg.source === "last-look") {
-      steps.push(`Match ${formatShares(leg.shares)} ${preview.asset} from a last look`)
-    } else {
-      steps.push(...poolActions(preview.asset, preview.side, leg.shares, leg.usdc, leg.fee))
+      lookShares += leg.shares
+      continue
     }
+    flushLook()
+    steps.push(...poolActions(preview.asset, preview.side, leg.shares, leg.usdc, leg.fee))
   }
+  flushLook()
   return steps
+}
+
+/** One swap is one escrow position, even when the route used several slices. */
+function coalesceCreated(state: MarketState, ids: string[]): { state: MarketState; ids: string[] } {
+  const pending = ids
+    .map((id) => state.fills.find((fill) => fill.id === id && fill.status === "pending"))
+    .filter((fill): fill is Fill => Boolean(fill))
+  if (pending.length <= 1) return { state, ids: pending.map((fill) => fill.id) }
+  const shares = pending.reduce((sum, fill) => sum + fill.shares, 0)
+  const notional = pending.reduce((sum, fill) => sum + fill.price * fill.shares, 0)
+  const fee = pending.reduce((sum, fill) => sum + (fill.feeUsdc ?? 0), 0)
+  const primary = pending[0]
+  const drop = new Set(pending.slice(1).map((fill) => fill.id))
+  const merged: Fill = {
+    ...primary,
+    shares,
+    price: shares > 0 ? notional / shares : primary.price,
+    feeUsdc: fee > 0 ? fee : undefined,
+  }
+  return {
+    ids: [primary.id],
+    state: {
+      ...state,
+      fills: state.fills
+        .filter((fill) => !drop.has(fill.id))
+        .map((fill) => {
+          if (fill.id === primary.id) return merged
+          if (fill.successorId && drop.has(fill.successorId)) return { ...fill, successorId: primary.id }
+          return fill
+        }),
+    },
+  }
+}
+
+/** Follow replacements to the order that is still open or already finalized. */
+export function liveHead(fill: Fill, fills: Fill[]): Fill {
+  let current = fill
+  const seen = new Set<string>()
+  while (current.successorId && !seen.has(current.id)) {
+    seen.add(current.id)
+    const next = fills.find((item) => item.id === current.successorId)
+    if (!next) break
+    current = next
+  }
+  return current
 }
 
 function bestLook(state: MarketState, actor: UserId, side: Side, asset: Asset, ammPrice: number): Fill | undefined {
@@ -478,6 +534,9 @@ export function applyOutbid(
     rebateUsdc: preview.rebate,
     priceBefore: preview.priceBefore,
     priceAfter: preview.priceAfter,
+    nextPrice: preview.newPrice,
+    revenueBefore: state.rebates,
+    revenueAfter: state.rebates + preview.rebate,
     successorId: createdId,
     feeUsdc: preview.split ? undefined : fill.feeUsdc,
     replacedAt: state.marketTime,
