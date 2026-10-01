@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { formatCents, formatCountdown, formatShares, formatUsdc, sideLabel, userLabel } from "../sim/format"
-import { liveHead } from "../sim/lastLook"
+import { liveHead, orderEconomics } from "../sim/lastLook"
 import { useStore } from "../sim/store"
 import type { Fill, UserId } from "../sim/types"
 
@@ -76,19 +76,21 @@ function accountingEvent(fill: Fill, fills: Fill[]): Fill | undefined {
 }
 
 function Ledger({ event }: { event: Fill }) {
-  const nextPrice = event.nextPrice
+  const { state } = useStore()
   const profit = event.profitUsdc ?? 0
   const notional = event.price * event.shares
+  const economics = orderEconomics(event, state.fills, state.activity, state.params.traderShare)
   return (
     <div className="ledger">
       <dl>
         <Row label="New Trader" value={event.replacedBy ? userLabel(event.replacedBy) : "—"} />
         <Row label="Displaced Trader" value={userLabel(event.owner)} />
         <Row label="Original Order" value={orderText(event, event.price)} />
-        {nextPrice != null && <Row label="New Order" value={orderText(event, nextPrice)} />}
-        {event.revenueBefore != null && event.revenueAfter != null && (
-          <Row label="AMM revenue" value={`${formatUsdc(event.revenueBefore)} → ${formatUsdc(event.revenueAfter)}`} />
-        )}
+        <Row label="New Order" value={orderText(event, economics.nextPrice)} />
+        <Row
+          label="AMM revenue"
+          value={`${formatUsdc(economics.revenueBefore)} → ${formatUsdc(economics.revenueAfter)}`}
+        />
         <Row label="Profit paid to displaced trader" value={`${formatUsdc(profit)}${roiText(profit, notional)}`} />
       </dl>
     </div>

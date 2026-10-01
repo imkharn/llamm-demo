@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { yesPrice } from "./amm"
-import { WINDOW_MS, applyOutbid, applySwap, describeSwap, finalizeDue, initialState, liveHead, quoteInput, swapActions } from "./lastLook"
+import { WINDOW_MS, applyOutbid, applySwap, describeSwap, finalizeDue, initialState, liveHead, orderEconomics, quoteInput, swapActions } from "./lastLook"
 import type { Fill, MarketState } from "./types"
 
 function swapYes(amount = 100) {
@@ -250,6 +250,29 @@ describe("last look", () => {
     const head = liveHead(replaced, second.state.fills)
     expect(head.id).toBe(live[0].id)
     expect(head.status).toBe("pending")
+  })
+
+  it("reconstructs the new order and pool revenue when an older replacement did not store them", () => {
+    const shares = 19.6097
+    const price = 10.2 / shares
+    const event: Fill = {
+      id: "old",
+      owner: "trader1",
+      side: "buy",
+      asset: "YES",
+      shares,
+      price,
+      deadline: WINDOW_MS,
+      createdAt: 0,
+      status: "replaced",
+      replacedBy: "trader2",
+      profitUsdc: 0.0204,
+      replacedAt: 1000,
+    }
+    const figures = orderEconomics(event, [event], [{ id: "a1", time: 1000, kind: "rebate", rebate: 0.1836 }], 0.1)
+    expect(figures.nextPrice * shares).toBeCloseTo(10.404, 4)
+    expect(figures.revenueBefore).toBeCloseTo(0, 6)
+    expect(figures.revenueAfter).toBeCloseTo(0.1836, 4)
   })
 
   it("summarizes every last look in a swap as one step", () => {

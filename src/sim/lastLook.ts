@@ -336,6 +336,52 @@ function coalesceCreated(state: MarketState, ids: string[]): { state: MarketStat
   }
 }
 
+/** Price the new trader locked, and pool rebate revenue before and after that bid. */
+export function orderEconomics(
+  event: Fill,
+  fills: Fill[],
+  activity: Activity[],
+  traderShare: number,
+): { nextPrice: number; revenueBefore: number; revenueAfter: number } {
+  const nextPrice = resolveNextPrice(event, fills, traderShare)
+  if (event.revenueBefore != null && event.revenueAfter != null) {
+    return { nextPrice, revenueBefore: event.revenueBefore, revenueAfter: event.revenueAfter }
+  }
+  let recorded: number | undefined
+  let revenueBefore = 0
+  for (const item of activity) {
+    if (item.kind !== "rebate") continue
+    if (item.fillId === event.id) {
+      recorded = item.rebate
+      break
+    }
+    if (event.replacedAt != null && item.time > event.replacedAt) break
+    if (event.replacedAt != null && item.time === event.replacedAt && item.fillId == null) {
+      recorded = item.rebate
+      break
+    }
+    revenueBefore += item.rebate ?? 0
+  }
+  const rebate =
+    event.rebateUsdc ??
+    recorded ??
+    (traderShare > 0 && traderShare < 1 ? ((event.profitUsdc ?? 0) * (1 - traderShare)) / traderShare : 0)
+  return { nextPrice, revenueBefore, revenueAfter: revenueBefore + rebate }
+}
+
+function resolveNextPrice(event: Fill, fills: Fill[], traderShare: number): number {
+  if (event.nextPrice != null && Number.isFinite(event.nextPrice)) return event.nextPrice
+  const successor = event.successorId ? fills.find((item) => item.id === event.successorId) : undefined
+  if (successor && Math.abs(successor.shares - event.shares) <= Math.max(0.01, event.shares * 1e-4)) {
+    return successor.price
+  }
+  if (traderShare > 0 && event.shares > 0) {
+    const gap = (event.profitUsdc ?? 0) / (traderShare * event.shares)
+    return event.side === "buy" ? event.price + gap : Math.max(0, event.price - gap)
+  }
+  return event.price
+}
+
 /** Follow replacements to the order that is still open or already finalized. */
 export function liveHead(fill: Fill, fills: Fill[]): Fill {
   let current = fill
