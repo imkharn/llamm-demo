@@ -42,6 +42,17 @@ export interface Fill {
   profitUsdc?: number
   /** Outcome tokens returned to a displaced seller. */
   returnedShares?: number
+  /** Pool's share of the gap when this slice was replaced. */
+  rebateUsdc?: number
+  /** YES price before and after the rebate on this replacement. */
+  priceBefore?: number
+  priceAfter?: number
+  /** Fill created by the bid that replaced this one. */
+  successorId?: string
+  /** Fill this one superseded. */
+  replacesId?: string
+  /** Swap fee kept by the pool when this fill was opened on the AMM. */
+  feeUsdc?: number
   replacedAt?: number
   finalizedAt?: number
 }
@@ -54,6 +65,8 @@ export interface Activity {
   priceBefore?: number
   priceAfter?: number
   rebate?: number
+  /** Replaced fill this rebate belongs to, or the fill that finalized. */
+  fillId?: string
 }
 
 export interface MarketState {

@@ -358,6 +358,7 @@ function applyAmmFill(
     asset: input.asset,
     shares: quote.shares,
     price: quote.price,
+    feeUsdc: quote.fee,
     deadline: state.marketTime + state.params.windowMs,
     createdAt: state.marketTime,
     status: "pending",
@@ -455,8 +456,13 @@ export function applyOutbid(
     balances[actor].usdc += preview.profit
   }
 
+  const createdId = `f${state.nextId}`
+  let nextId = state.nextId + 1
+  const replacedId = preview.split ? `f${nextId}` : fill.id
+  if (preview.split) nextId += 1
+
   const replaced: Fill = {
-    id: fill.id,
+    id: replacedId,
     owner: fill.owner,
     side: fill.side,
     asset: fill.asset,
@@ -469,10 +475,15 @@ export function applyOutbid(
     payoutUsdc: preview.payoutUsdc,
     profitUsdc: preview.profit,
     returnedShares: preview.returnedShares,
+    rebateUsdc: preview.rebate,
+    priceBefore: preview.priceBefore,
+    priceAfter: preview.priceAfter,
+    successorId: createdId,
+    feeUsdc: preview.split ? undefined : fill.feeUsdc,
     replacedAt: state.marketTime,
   }
   const created: Fill = {
-    id: `f${state.nextId}`,
+    id: createdId,
     owner: actor,
     side: fill.side,
     asset: fill.asset,
@@ -481,13 +492,11 @@ export function applyOutbid(
     deadline: preview.newDeadline,
     createdAt: state.marketTime,
     status: "pending",
+    replacesId: replacedId,
   }
 
   let fills: Fill[]
-  let nextId = state.nextId + 1
   if (preview.split) {
-    replaced.id = `f${nextId}`
-    nextId += 1
     fills = state.fills.map((item) =>
       item.id === fill.id ? { ...item, shares: preview.remainderShares } : item,
     )
@@ -504,6 +513,7 @@ export function applyOutbid(
     rebate: preview.rebate,
     priceBefore: preview.priceBefore,
     priceAfter: preview.priceAfter,
+    fillId: replacedId,
     text: rebateText(actor, fill, preview),
   })
   nextId += 1
@@ -537,6 +547,7 @@ export function finalizeDue(state: MarketState): MarketState {
       id: `a${nextId}`,
       time: state.marketTime,
       kind: "finalize",
+      fillId: fill.id,
       text:
         fill.side === "buy"
           ? `${userLabel(fill.owner)} received ${formatShares(fill.shares)} ${fill.asset} from escrow.`

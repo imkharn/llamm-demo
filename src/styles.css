@@ -573,7 +573,50 @@ main {
   padding: 12px;
 }
 
+.trade-hit {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .trade p { margin: 6px 0 0; }
+
+.ledger {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e6e3ea;
+  display: grid;
+  gap: 12px;
+}
+
+.ledger h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #9d2178;
+}
+
+.ledger dl { margin: 0; display: grid; gap: 4px; }
+
+.ledger dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.ledger dt { color: #6f6a78; }
+.ledger dd { margin: 0; font-weight: 600; text-align: right; }
 .muted { color: #6f6a78; font-size: 13px; line-height: 1.4; }
 
 .badge {

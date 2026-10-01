@@ -110,6 +110,11 @@ describe("last look", () => {
     const replaced = bundled.state.fills.find((item) => item.status === "replaced")!
     expect(replaced.profitUsdc).toBeCloseTo(0.1 * gap * shares, 6)
     expect(replaced.replacedBy).toBe("trader1")
+    expect(replaced.successorId).toBe(pending[0].id)
+    expect(pending[0].replacesId).toBe(replaced.id)
+    expect(replaced.rebateUsdc).toBeCloseTo(rebate, 6)
+    expect(replaced.feeUsdc).toBeCloseTo(0.5, 6)
+    expect(bundled.state.activity.some((item) => item.fillId === replaced.id && item.kind === "rebate")).toBe(true)
   })
 
   it("finalizes into the holder's wallet after the window", () => {
