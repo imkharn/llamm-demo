@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { yesPrice } from "./amm"
-import { WINDOW_MS, applyOutbid, applySwap, describeSwap, finalizeDue, fitSwapAmount, initialState, liveHead, orderEconomics, quoteInput, swapActions } from "./lastLook"
+import { WINDOW_MS, applyOutbid, applySwap, describeSwap, displacementStory, finalizeDue, fitSwapAmount, initialState, liveHead, orderEconomics, quoteInput, swapActions } from "./lastLook"
 import type { Fill, MarketState } from "./types"
 
 function swapYes(amount = 100) {
@@ -317,6 +317,29 @@ describe("last look", () => {
     if (!described.ok) throw new Error(described.error)
     const matches = swapActions(described.preview).filter((step) => step.startsWith("Match"))
     expect(matches).toEqual(["Match 39.4117 YES from a last look"])
+  })
+
+  it("attributes an overpaid last look to the trader who was displaced", () => {
+    const first = swapYes()
+    if (!first.ok) throw new Error(first.error)
+    const original = first.state.fills[0]
+    const described = describeSwap(first.state, { user: "trader2", side: "buy", asset: "YES", amount: 200 })
+    if (!described.ok) throw new Error(described.error)
+    const second = applySwap(first.state, {
+      user: "trader2",
+      side: "buy",
+      asset: "YES",
+      amount: 200,
+      improvePrice: described.preview.overpayAt,
+    })
+    if (!second.ok) throw new Error(second.error)
+    const pending = second.state.fills.find(
+      (fill) => fill.status === "pending" && fill.owner === "trader2" && Math.abs(fill.shares - original.shares) < 0.05,
+    )
+    expect(pending).toBeTruthy()
+    const story = displacementStory(pending!, second.state.fills)
+    expect(story?.displaced.owner).toBe("trader1")
+    expect(story?.nextPrice).toBeCloseTo(described.preview.overpayAt, 6)
   })
 
   it("shrinks a maxed buy so the overpay still fits the balance", () => {

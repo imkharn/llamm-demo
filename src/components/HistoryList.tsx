@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { formatCents, formatCountdown, formatShares, formatUsdc, sideLabel, userLabel } from "../sim/format"
-import { orderEconomics } from "../sim/lastLook"
+import { displacementStory } from "../sim/lastLook"
 import { useStore } from "../sim/store"
 import type { Fill } from "../sim/types"
 
@@ -26,7 +26,7 @@ export function HistoryList() {
       {paused && <p className="hint">The market clock is paused, so these countdowns are holding.</p>}
       {orders.map((fill) => {
         const open = openId === fill.id
-        const event = accountingEvent(fill, state.fills)
+        const event = displacementStory(fill, state.fills, state.params.traderShare)
         return (
           <article key={fill.id} className={open ? "trade open" : "trade"}>
             <button
@@ -60,25 +60,18 @@ export function HistoryList() {
   )
 }
 
-function accountingEvent(fill: Fill, fills: Fill[]): Fill | undefined {
-  if (fill.status === "replaced") return fill
-  if (!fill.replacesId) return undefined
-  return fills.find((item) => item.id === fill.replacesId)
-}
-
-function Ledger({ event }: { event: Fill }) {
-  const { state } = useStore()
-  const profit = event.profitUsdc ?? 0
-  const notional = event.price * event.shares
-  const economics = orderEconomics(event, state.fills, state.activity, state.params.traderShare)
+function Ledger({ event }: { event: NonNullable<ReturnType<typeof displacementStory>> }) {
+  const displaced = event.displaced
+  const profit = displaced.profitUsdc ?? 0
+  const notional = displaced.price * displaced.shares
   return (
     <div className="ledger">
       <dl>
-        <Row label="Displaced Trader" value={userLabel(event.owner)} />
-        <Row label="New Trader" value={event.replacedBy ? userLabel(event.replacedBy) : "—"} />
-        <Row label="Original Order" value={orderText(event, event.price)} />
-        <Row label="New Order" value={orderText(event, economics.nextPrice)} />
-        <Row label="Rebate paid to AMM" value={formatUsdc(economics.revenueAfter - economics.revenueBefore)} />
+        <Row label="Displaced Trader" value={userLabel(displaced.owner)} />
+        <Row label="New Trader" value={displaced.replacedBy ? userLabel(displaced.replacedBy) : "—"} />
+        <Row label="Original Order" value={orderText(displaced, displaced.price)} />
+        <Row label="New Order" value={orderText(displaced, event.nextPrice)} />
+        <Row label="Rebate paid to AMM" value={formatUsdc(event.rebate)} />
         <Row label="Profit paid to displaced trader" value={`${formatUsdc(profit)}${roiText(profit, notional)}`} />
       </dl>
     </div>

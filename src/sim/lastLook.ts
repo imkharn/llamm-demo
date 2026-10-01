@@ -393,6 +393,52 @@ export function liveHead(fill: Fill, fills: Fill[]): Fill {
   return current
 }
 
+export interface DisplacementStory {
+  displaced: Fill
+  nextPrice: number
+  rebate: number
+}
+
+/** The other trader this order took, skipping a later raise of the buyer's own fill. */
+export function displacementStory(fill: Fill, fills: Fill[], traderShare = 0.1): DisplacementStory | null {
+  const immediate = fill.status === "replaced" ? fill : fill.replacesId ? fills.find((item) => item.id === fill.replacesId) : undefined
+  if (!immediate) return null
+  const displaced = rootDisplacement(immediate, fills)
+  const head = liveHead(displaced, fills)
+  return { displaced, nextPrice: head.price, rebate: chainRebate(displaced, fills, traderShare) }
+}
+
+function rootDisplacement(event: Fill, fills: Fill[]): Fill {
+  let current = event
+  const seen = new Set<string>()
+  while (current.replacedBy === current.owner && !seen.has(current.id)) {
+    seen.add(current.id)
+    const linked = current.replacesId ? fills.find((item) => item.id === current.replacesId) : undefined
+    const pointed = fills.find((item) => item.successorId === current.id && item.id !== current.id)
+    const prev = linked ?? pointed
+    if (!prev) break
+    current = prev
+  }
+  return current
+}
+
+function chainRebate(root: Fill, fills: Fill[], traderShare: number): number {
+  let total = 0
+  let current: Fill | undefined = root
+  const seen = new Set<string>()
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id)
+    if (current.status === "replaced") {
+      if (current.rebateUsdc != null) total += current.rebateUsdc
+      else if (traderShare > 0 && traderShare < 1) total += ((current.profitUsdc ?? 0) * (1 - traderShare)) / traderShare
+    }
+    const nextId: string | undefined = current.successorId
+    if (!nextId) break
+    current = fills.find((item) => item.id === nextId)
+  }
+  return total
+}
+
 function bestLook(state: MarketState, actor: UserId, side: Side, asset: Asset, ammPrice: number): Fill | undefined {
   const options = state.fills.filter((fill) => {
     if (fill.status !== "pending" || fill.owner === actor || fill.side !== side || fill.asset !== asset) return false
@@ -582,6 +628,7 @@ export function applyOutbid(
     revenueBefore: state.rebates,
     revenueAfter: state.rebates + preview.rebate,
     successorId: createdId,
+    replacesId: fill.replacesId,
     feeUsdc: preview.split ? undefined : fill.feeUsdc,
     replacedAt: state.marketTime,
   }
