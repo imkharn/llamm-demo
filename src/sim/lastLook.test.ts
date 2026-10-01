@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { yesPrice } from "./amm"
-import { WINDOW_MS, applyOutbid, applySwap, describeSwap, finalizeDue, initialState, liveHead, orderEconomics, quoteInput, swapActions } from "./lastLook"
+import { WINDOW_MS, applyOutbid, applySwap, describeSwap, finalizeDue, fitSwapAmount, initialState, liveHead, orderEconomics, quoteInput, swapActions } from "./lastLook"
 import type { Fill, MarketState } from "./types"
 
 function swapYes(amount = 100) {
@@ -313,6 +313,29 @@ describe("last look", () => {
     if (!described.ok) throw new Error(described.error)
     const matches = swapActions(described.preview).filter((step) => step.startsWith("Match"))
     expect(matches).toEqual(["Match 39.4117 YES from a last look"])
+  })
+
+  it("shrinks a maxed buy so the overpay still fits the balance", () => {
+    const start = initialState()
+    const plain = describeSwap(start, { user: "trader1", side: "buy", asset: "YES", amount: 1000 })
+    if (!plain.ok) throw new Error(plain.error)
+    const amount = fitSwapAmount(
+      start,
+      { user: "trader1", side: "buy", asset: "YES", amount: 1000, improvePrice: plain.preview.overpayAt },
+      1000,
+    )
+    expect(amount).toBeLessThan(1000)
+    const fitted = describeSwap(start, {
+      user: "trader1",
+      side: "buy",
+      asset: "YES",
+      amount,
+      improvePrice: plain.preview.overpayAt,
+    })
+    if (!fitted.ok) throw new Error(fitted.error)
+    const spent = amount + (fitted.preview.improve?.netExtraUsdc ?? 0)
+    expect(spent).toBeLessThanOrEqual(1000 + 1e-4)
+    expect(fitted.preview.shares).toBeLessThan(plain.preview.shares)
   })
 
   it("solves the USDC input for a chosen number of shares", () => {

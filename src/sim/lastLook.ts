@@ -143,6 +143,39 @@ export function describeSwap(
   return { ok: true, preview: previewFrom(state, input, sim) }
 }
 
+/**
+ * Largest route size whose all-in USDC, including an overpay, stays within `budgetUsdc`.
+ * Returns the requested amount when the price is not a valid overpay.
+ */
+export function fitSwapAmount(state: MarketState, input: SwapInput, budgetUsdc: number): number {
+  if (!(input.amount > 0) || input.side !== "buy" || input.improvePrice == null || !Number.isFinite(input.improvePrice)) {
+    return input.amount
+  }
+  const spent = (amount: number): number | null => {
+    if (!(amount > 1e-8)) return null
+    const described = describeSwap(state, { ...input, amount })
+    if (!described.ok) return null
+    return amount + (described.preview.improve?.netExtraUsdc ?? 0)
+  }
+  const full = spent(input.amount)
+  if (full != null && full <= budgetUsdc + 1e-6) return input.amount
+  const probed = describeSwap(state, input)
+  if (!probed.ok && !probed.error.startsWith("Insufficient")) return input.amount
+
+  let lo = 0
+  let hi = input.amount
+  let best = 0
+  for (let i = 0; i < 48; i++) {
+    const mid = (lo + hi) / 2
+    const cost = spent(mid)
+    if (cost != null && cost <= budgetUsdc + 1e-6) {
+      best = mid
+      lo = mid
+    } else hi = mid
+  }
+  return best > 0 ? best : input.amount
+}
+
 export function applySwap(state: MarketState, input: SwapInput): Result {
   const sim = simulateSwap(state, input)
   if (!sim.ok) return sim

@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { formatCents, formatCountdown, formatShares, formatUsdc, sideLabel, userLabel } from "../sim/format"
-import { liveHead, orderEconomics } from "../sim/lastLook"
+import { orderEconomics } from "../sim/lastLook"
 import { useStore } from "../sim/store"
 import type { Fill, UserId } from "../sim/types"
 
@@ -61,16 +61,11 @@ export function HistoryList() {
 }
 
 function visibleFills(fills: Fill[], user: UserId): Fill[] {
-  const heads = new Map<string, Fill>()
-  for (const fill of fills) {
-    if (fill.owner !== user && fill.replacedBy !== user) continue
-    const head = liveHead(fill, fills)
-    heads.set(head.id, head)
-  }
-  return [...heads.values()]
+  return fills.filter((fill) => fill.owner === user || fill.replacedBy === user)
 }
 
 function accountingEvent(fill: Fill, fills: Fill[]): Fill | undefined {
+  if (fill.status === "replaced") return fill
   if (!fill.replacesId) return undefined
   return fills.find((item) => item.id === fill.replacesId)
 }

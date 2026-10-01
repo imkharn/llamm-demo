@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { yesPrice } from "../sim/amm"
 import { formatCents, formatChance, formatImpact, formatInputNumber, formatShares, formatUsdc, formatWindow } from "../sim/format"
 import { SWAP_FEE } from "../sim/amm"
-import { describeSwap, lastLookChance, quoteInput, routeLabel } from "../sim/lastLook"
+import { describeSwap, fitSwapAmount, lastLookChance, quoteInput, routeLabel } from "../sim/lastLook"
 import { useStore } from "../sim/store"
 import type { Asset, Side } from "../sim/types"
 import { Hint } from "./Hint"
@@ -21,6 +21,7 @@ export function SwapCard({ onSwap }: { onSwap: (draft: SwapDraft) => void }) {
   const [improveText, setImproveText] = useState("")
   const [picking, setPicking] = useState<"pay" | "receive" | null>(null)
   const suggestedPrice = useRef("")
+  const fittedPrice = useRef("")
 
   const side: Side = payToken === "USDC" ? "buy" : "sell"
   const asset: Asset = payToken === "USDC" ? receiveAsset : payToken
@@ -30,16 +31,37 @@ export function SwapCard({ onSwap }: { onSwap: (draft: SwapDraft) => void }) {
       ? quoteInput(state, { user: state.activeUser, side, asset, output: desiredOut })
       : null
   const tradeAmount = edited === "pay" ? (payText === "" ? 0 : Number(payText)) : (solvedIn ?? 0)
+  const balance = payToken === "USDC" ? state.balances[state.activeUser].usdc : state.balances[state.activeUser][payToken]
   const base = { user: state.activeUser, side, asset, amount: tradeAmount }
   const quoted = describeSwap(state, base)
   const improvePrice = improveOn ? (improveText.trim() === "" ? Number.NaN : Number(improveText) / 100) : undefined
-  const described = improveOn ? describeSwap(state, { ...base, improvePrice }) : quoted
+  const priced = improvePrice != null && Number.isFinite(improvePrice)
+  const spendCap = edited === "pay" && tradeAmount > 0 ? Math.min(tradeAmount, balance) : balance
+  const fittedAmount =
+    priced && side === "buy" && tradeAmount > 0
+      ? fitSwapAmount(state, { ...base, improvePrice }, spendCap)
+      : tradeAmount
+  const described = priced
+    ? describeSwap(state, { ...base, amount: fittedAmount, improvePrice })
+    : quoted
   const overpayAt = quoted.ok ? quoted.preview.overpayAt : null
 
-  const balance = payToken === "USDC" ? state.balances[state.activeUser].usdc : state.balances[state.activeUser][payToken]
   const yes = yesPrice(state.pool)
   const implied = lastLookChance(state.fills)
   const preview = described.ok ? described.preview : quoted.ok ? quoted.preview : null
+
+  const fittedShares = described.ok && side === "buy" ? described.preview.shares : null
+  useEffect(() => {
+    if (edited !== "receive" || !priced || fittedShares == null || desiredOut == null) return
+    if (fittedPrice.current === improveText) return
+    const digits = fittedShares >= 100 ? 2 : 4
+    const factor = 10 ** digits
+    const affordable = Math.floor(fittedShares * factor) / factor
+    if (desiredOut > affordable + 1e-6) {
+      fittedPrice.current = improveText
+      setReceiveText(String(affordable))
+    }
+  }, [improveText, edited, priced, fittedShares, desiredOut])
 
   useEffect(() => {
     if (!improveOn || overpayAt == null) return
@@ -87,6 +109,7 @@ export function SwapCard({ onSwap }: { onSwap: (draft: SwapDraft) => void }) {
 
   function toggleImprove() {
     setImproveOn((on) => !on)
+    fittedPrice.current = ""
     if (improveOn) {
       setImproveText("")
       suggestedPrice.current = ""
@@ -99,7 +122,7 @@ export function SwapCard({ onSwap }: { onSwap: (draft: SwapDraft) => void }) {
       kind: "swap",
       side,
       asset,
-      amount: tradeAmount,
+      amount: fittedAmount,
       improvePrice: improveOn ? Number(improveText) / 100 : undefined,
     })
   }
@@ -153,8 +176,8 @@ export function SwapCard({ onSwap }: { onSwap: (draft: SwapDraft) => void }) {
           value={
             edited === "receive"
               ? receiveText
-              : quoted.ok
-                ? formatInputNumber(side === "buy" ? quoted.preview.shares : quoted.preview.usdc)
+              : described.ok
+                ? formatInputNumber(side === "buy" ? described.preview.shares : described.preview.usdc)
                 : ""
           }
           onChange={(value) => {
