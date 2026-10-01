@@ -24,7 +24,7 @@ function Shell() {
   const [paramsOpen, setParamsOpen] = useState(false)
   const paramsRef = useRef<HTMLDivElement>(null)
   const isLp = state.activeUser === "lp"
-  const pendingMine = state.fills.filter((fill) => fill.owner === state.activeUser && fill.status === "pending").length
+  const pendingCount = state.fills.filter((fill) => fill.status === "pending").length
 
   useEffect(() => {
     if (!paramsOpen) return
@@ -82,7 +82,7 @@ function Shell() {
               </button>
               <button type="button" role="tab" aria-selected={tab === "second"} className={tab === "second" ? "tab active" : "tab"} onClick={() => setTab("second")}>
                 {isLp ? "Activity" : "History"}
-                {!isLp && pendingMine > 0 && <span className="count">{pendingMine}</span>}
+                {!isLp && pendingCount > 0 && <span className="count">{pendingCount}</span>}
               </button>
             </div>
             <div className="params" ref={paramsRef}>

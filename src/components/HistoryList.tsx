@@ -2,16 +2,16 @@ import { useState } from "react"
 import { formatCents, formatCountdown, formatShares, formatUsdc, sideLabel, userLabel } from "../sim/format"
 import { orderEconomics } from "../sim/lastLook"
 import { useStore } from "../sim/store"
-import type { Fill, UserId } from "../sim/types"
+import type { Fill } from "../sim/types"
 
 export function HistoryList() {
   const { state } = useStore()
   const [openId, setOpenId] = useState<string | null>(null)
-  const mine = visibleFills(state.fills, state.activeUser).sort(
-    (a, b) => statusRank(a.status) - statusRank(b.status) || b.createdAt - a.createdAt,
-  )
+  const orders = state.fills
+    .slice()
+    .sort((a, b) => statusRank(a.status) - statusRank(b.status) || b.createdAt - a.createdAt)
 
-  if (mine.length === 0) {
+  if (orders.length === 0) {
     return (
       <div className="empty">
         <p>No trades yet.</p>
@@ -19,12 +19,12 @@ export function HistoryList() {
     )
   }
 
-  const paused = state.speed === 0 && mine.some((fill) => fill.status === "pending")
+  const paused = state.speed === 0 && orders.some((fill) => fill.status === "pending")
 
   return (
     <div className="history">
       {paused && <p className="hint">The market clock is paused, so these countdowns are holding.</p>}
-      {mine.map((fill) => {
+      {orders.map((fill) => {
         const open = openId === fill.id
         const event = accountingEvent(fill, state.fills)
         return (
@@ -39,7 +39,7 @@ export function HistoryList() {
             >
               <div className="trade-top">
                 <strong>
-                  {fill.owner === state.activeUser ? sideLabel(fill) : `${userLabel(fill.owner)} · ${sideLabel(fill)}`}
+                  {userLabel(fill.owner)} · {sideLabel(fill)}
                 </strong>
                 <span className={`badge badge-${fill.status}`}>{statusLabel(fill.status)}</span>
               </div>
@@ -58,10 +58,6 @@ export function HistoryList() {
       })}
     </div>
   )
-}
-
-function visibleFills(fills: Fill[], user: UserId): Fill[] {
-  return fills.filter((fill) => fill.owner === user || fill.replacedBy === user)
 }
 
 function accountingEvent(fill: Fill, fills: Fill[]): Fill | undefined {
@@ -122,14 +118,15 @@ function detail(fill: Fill): string {
       : `Received ${formatUsdc(fill.price * fill.shares)}.`
   }
   const profit = formatUsdc(fill.profitUsdc ?? 0)
+  const owner = userLabel(fill.owner)
   if (fill.replacedBy === fill.owner) {
-    return `You improved this fill. ${profit} of the gap came back to you.`
+    return `${owner} improved this fill. ${profit} of the gap came back to them.`
   }
   const who = fill.replacedBy ? userLabel(fill.replacedBy) : "Someone"
   if (fill.side === "sell") {
-    return `${who} replaced you. Returned ${formatShares(fill.returnedShares ?? 0)} ${fill.asset} and ${profit} profit.`
+    return `${who} replaced ${owner}. Returned ${formatShares(fill.returnedShares ?? 0)} ${fill.asset} and ${profit} profit.`
   }
-  return `${who} replaced you. Paid ${formatUsdc(fill.payoutUsdc ?? 0)}, including ${profit} profit.`
+  return `${who} replaced ${owner}. Paid ${formatUsdc(fill.payoutUsdc ?? 0)}, including ${profit} profit.`
 }
 
 function statusLabel(status: Fill["status"]): string {
