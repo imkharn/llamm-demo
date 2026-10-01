@@ -46,7 +46,7 @@ export function HistoryList() {
               <p>
                 {formatShares(fill.shares)} {fill.asset} at {formatCents(fill.price)}
               </p>
-              <p className="muted">{detail(fill)}</p>
+              {detail(fill) && <p className="muted">{detail(fill)}</p>}
               {fill.status === "pending" && (
                 <p className="countdown">Finalizes in {formatCountdown(fill.deadline - state.marketTime)}</p>
               )}
@@ -83,14 +83,11 @@ function Ledger({ event }: { event: Fill }) {
   return (
     <div className="ledger">
       <dl>
-        <Row label="New Trader" value={event.replacedBy ? userLabel(event.replacedBy) : "—"} />
         <Row label="Displaced Trader" value={userLabel(event.owner)} />
+        <Row label="New Trader" value={event.replacedBy ? userLabel(event.replacedBy) : "—"} />
         <Row label="Original Order" value={orderText(event, event.price)} />
         <Row label="New Order" value={orderText(event, economics.nextPrice)} />
-        <Row
-          label="AMM revenue"
-          value={`${formatUsdc(economics.revenueBefore)} → ${formatUsdc(economics.revenueAfter)}`}
-        />
+        <Row label="Rebate paid to AMM" value={formatUsdc(economics.revenueAfter - economics.revenueBefore)} />
         <Row label="Profit paid to displaced trader" value={`${formatUsdc(profit)}${roiText(profit, notional)}`} />
       </dl>
     </div>
@@ -121,7 +118,7 @@ function Row({ label, value }: { label: string; value: string }) {
 function detail(fill: Fill): string {
   if (fill.status === "pending") {
     return fill.side === "buy"
-      ? `Spent ${formatUsdc(fill.price * fill.shares)}. Tokens release when this finalizes.`
+      ? ""
       : `Selling into escrow. ${formatUsdc(fill.price * fill.shares)} releases when this finalizes.`
   }
   if (fill.status === "finalized") {
