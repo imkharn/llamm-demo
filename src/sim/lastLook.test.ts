@@ -269,7 +269,12 @@ describe("last look", () => {
       profitUsdc: 0.0204,
       replacedAt: 1000,
     }
-    const figures = orderEconomics(event, [event], [{ id: "a1", time: 1000, kind: "rebate", rebate: 0.1836 }], 0.1)
+    const figures = orderEconomics(
+      event,
+      [event],
+      [{ id: "a1", time: 1000, kind: "rebate", rebate: 0.1836, text: "Rebate" }],
+      0.1,
+    )
     expect(figures.nextPrice * shares).toBeCloseTo(10.404, 4)
     expect(figures.revenueBefore).toBeCloseTo(0, 6)
     expect(figures.revenueAfter).toBeCloseTo(0.1836, 4)
